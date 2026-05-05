@@ -1,48 +1,44 @@
 # Unofficial VLC Addons
 
-This project enables **Stremio addon support** directly within VLC Media Player. It uses a suite of Lua scripts to host a local HTTP server, provide service discovery, and allow for content management.[cite: 3, 4, 5]
+This project allows you to use **Stremio addons** directly within VLC Media Player by hosting a local HTTP server and utilizing VLC's Lua scripting capabilities.
 
 ---
 
 ## 🛠 Project Components
 
-*   **`unofficial_vlc_intf.lua`**: The core interface script that runs a local TCP HTTP server on port 8181.[cite: 4]
-*   **`unofficial_vlc_addons.lua`**: Service Discovery script that adds the "Unofficial VLC Addons" node to the VLC playlist sidebar.[cite: 3]
-*   **`unofficial_vlc_playlist.lua`**: A playlist parser for handling JSON data from the local server.[cite: 1]
-*   **`unofficial_vlc_manager.lua`**: A VLC Extension (GUI) to add, remove, or toggle Stremio addons.[cite: 5]
-*   **`install.bat`**: An automated Windows installer and configuration script.[cite: 2]
+*   **`unofficial_vlc_intf.lua`**: The core interface script that runs a local TCP HTTP server on port 8181 to handle addon logic and stream selection.
+*   **`unofficial_vlc_addons.lua`**: A Service Discovery script that adds the "Unofficial VLC Addons" node to your VLC sidebar for browsing catalogs.
+*   **`unofficial_vlc_playlist.lua`**: A playlist parser that handles the JSON data sent from the local server.
+*   **`unofficial_vlc_manager.lua`**: A VLC Extension providing a graphical interface to add, remove, or toggle addons within VLC.
+*   **`install.bat`**: A Windows batch script to automate the installation and configuration of all components.
 
 ---
 
 ## 🚀 Installation
 
 ### Automatic (Windows)
-1. Download the repository files.
-2. Run **`install.bat`** as an Administrator.[cite: 2]
-3. The script will automatically install the scripts and configure your `vlcrc` settings.[cite: 2]
+1. Download the script files into a single folder.
+2. Run **`install.bat`** as an Administrator.
+3. The installer will automatically locate your VLC installation, copy the files to the correct directories, and configure your settings.
 
 ### Manual Setup
-If you are on a different OS or prefer manual installation, move the files to the following directories:
-
-*   **`unofficial_vlc_intf.lua`** ➔ `VLC\lua\intf\`[cite: 2, 4]
-*   **`unofficial_vlc_addons.lua`** ➔ `%APPDATA%\vlc\lua\sd\`[cite: 2, 3]
-*   **`unofficial_vlc_playlist.lua`** ➔ `%APPDATA%\vlc\lua\playlist\`[cite: 1, 2]
-*   **`unofficial_vlc_manager.lua`** ➔ `%APPDATA%\vlc\lua\extensions\`[cite: 2, 5]
+If you prefer to install manually, move the files to these locations:
+*   **`unofficial_vlc_intf.lua`** -> `VLC\lua\intf\`
+*   **`unofficial_vlc_addons.lua`** -> `%APPDATA%\vlc\lua\sd\`
+*   **`unofficial_vlc_playlist.lua`** -> `%APPDATA%\vlc\lua\playlist\`
+*   **`unofficial_vlc_manager.lua`** -> `%APPDATA%\vlc\lua\extensions\`
 
 ---
 
 ## ⚙️ Configuration
-
-The following settings are required in your VLC configuration (`vlcrc`) for the server to function:
-
-*   `lua-intf=unofficial_vlc_intf`[cite: 2]
-*   `extraintf=luaintf`[cite: 2]
-*   `http-port=8181`[cite: 2]
+To enable the server, the following settings must be applied to your VLC configuration (the installer handles this automatically):
+*   `lua-intf=unofficial_vlc_intf`
+*   `extraintf=luaintf`
+*   `http-port=8181`
 
 ---
 
 ## 📺 Usage
-
-1.  **Manage Addons**: Open VLC and go to `View` > `Unofficial VLC Addons Manager` to add your Stremio manifest URLs.[cite: 5]
-2.  **Browse Catalogs**: Navigate to `View` > `Playlist` > `Internet` > `Unofficial VLC Addons` to explore Movies and Series.[cite: 2, 3]
-3.  **Web Dashboard**: Access settings and management at `http://127.0.0.1:8181` in any browser.[cite: 2, 4]
+1. **Manage Addons**: Go to `View` > `Unofficial VLC Addons Manager` to paste Stremio manifest URLs.
+2. **Browse Content**: Go to `View` > `Playlist` > `Internet` > `Unofficial VLC Addons` to explore your added catalogs.
+3. **Web Interface**: You can also manage settings and addons via your browser at `http://127.0.0.1:8181`.
