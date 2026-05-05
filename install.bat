@@ -18,15 +18,54 @@ echo   Unofficial VLC Addons Installer
 echo  ================================
 echo.
 echo  1) Auto Install  (closes VLC, installs, reopens VLC)
-echo  2) Manual Install Instructions
-echo  3) Close
+echo  2) Update from GitHub
+echo  3) Manual Install Instructions
+echo  4) Close
 echo.
 set /p choice=" Select option: "
 
 if "%choice%"=="1" goto :auto
-if "%choice%"=="2" goto :manual
-if "%choice%"=="3" exit /b
+if "%choice%"=="2" goto :update
+if "%choice%"=="3" goto :manual
+if "%choice%"=="4" exit /b
 goto :menu
+
+:update
+echo.
+echo  Downloading latest files from GitHub...
+echo.
+set RAW=https://raw.githubusercontent.com/MightyX3N-Patrick/unofficial-vlc-addons/main
+set TMPDIR=%TEMP%\uva_update
+mkdir "%TMPDIR%" 2>nul
+
+powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest '%RAW%/unofficial_vlc_intf.lua' -OutFile '%TMPDIR%\unofficial_vlc_intf.lua'"
+powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest '%RAW%/unofficial_vlc_addons.lua' -OutFile '%TMPDIR%\unofficial_vlc_addons.lua'"
+powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest '%RAW%/unofficial_vlc_playlist.lua' -OutFile '%TMPDIR%\unofficial_vlc_playlist.lua'"
+powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest '%RAW%/unofficial_vlc_manager.lua' -OutFile '%TMPDIR%\unofficial_vlc_manager.lua'"
+powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest '%RAW%/install.bat' -OutFile '%TMPDIR%\install.bat'"
+
+if not exist "%TMPDIR%\unofficial_vlc_intf.lua" (
+    echo  ERROR: Download failed. Check your internet connection.
+    pause
+    goto :menu
+)
+
+echo  Download complete. Updating local files...
+echo.
+
+copy /y "%TMPDIR%\unofficial_vlc_intf.lua"    "%~dp0unofficial_vlc_intf.lua" >nul
+copy /y "%TMPDIR%\unofficial_vlc_addons.lua"   "%~dp0unofficial_vlc_addons.lua" >nul
+copy /y "%TMPDIR%\unofficial_vlc_playlist.lua" "%~dp0unofficial_vlc_playlist.lua" >nul
+copy /y "%TMPDIR%\unofficial_vlc_manager.lua"  "%~dp0unofficial_vlc_manager.lua" >nul
+
+:: Self-update: save new bat, launch it, exit this one
+copy /y "%TMPDIR%\install.bat" "%~dp0install.new.bat" >nul
+rmdir /s /q "%TMPDIR%" >nul 2>&1
+
+echo  All files updated. Relaunching with updated installer...
+echo.
+start "" "%~dp0install.new.bat"
+exit /b
 
 :manual
 cls
@@ -51,10 +90,7 @@ echo.
 echo  2. Open %%APPDATA%%\vlc\vlcrc and set:
 echo.
 echo     lua-intf=unofficial_vlc_intf
-echo     extraintf=luaintf:http
-echo     http-host=127.0.0.1
-echo     http-port=8181
-echo     http-password=vlcaddons
+echo     extraintf=luaintf
 echo.
 echo  3. Restart VLC.
 echo.
@@ -66,10 +102,8 @@ echo.
 echo  Closing VLC...
 taskkill /f /im vlc.exe >nul 2>&1
 taskkill /f /im vlc-cache-gen.exe >nul 2>&1
-:: Kill anything on port 8181
 for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":8181 " ^| findstr "LISTENING"') do taskkill /f /pid %%a >nul 2>&1
 timeout /t 3 >nul
-:: Make sure vlc.exe is fully gone
 :waitvlc
 tasklist /fi "imagename eq vlc.exe" 2>nul | find /i "vlc.exe" >nul
 if not errorlevel 1 (
@@ -107,7 +141,6 @@ mkdir "%LUA_SD%" 2>nul
 mkdir "%LUA_PL%" 2>nul
 mkdir "%LUA_EXT%" 2>nul
 
-:: Install intf script to both locations
 copy /y "%~dp0unofficial_vlc_intf.lua" "%LUA_INTF%\unofficial_vlc_intf.lua" >nul
 copy /y "%~dp0unofficial_vlc_intf.lua" "%VLC_USER%\lua\intf\unofficial_vlc_intf.lua" >nul
 copy /y "%~dp0unofficial_vlc_addons.lua"   "%LUA_SD%\unofficial_vlc_addons.lua" >nul
@@ -116,13 +149,11 @@ copy /y "%~dp0unofficial_vlc_manager.lua"  "%LUA_EXT%\unofficial_vlc_manager.lua
 
 echo  Copied Lua scripts.
 
-powershell -ExecutionPolicy Bypass -Command "$f='%VLCRC%'; $c=[IO.File]::ReadAllText($f); $c=$c -replace '(?m)#?lua-intf=\S*','lua-intf=unofficial_vlc_intf'; $c=$c -replace '(?m)#?extraintf=\S*','extraintf=luaintf'; $c=$c -replace '(?m)#?http-host=\S*','http-host='; $c=$c -replace '(?m)#?http-port=\S*','http-port='; $c=$c -replace '(?m)#?http-password=\S*','http-password='; $c=$c -replace '(?m)#?qt-system-tray=\S*','qt-system-tray=0'; $c=$c -replace '(?m)#?qt-minimize-systray=\S*','qt-minimize-systray=0'; $c=$c -replace '(?m)#?qt-close-to-systray=\S*','qt-close-to-systray=0'; $c=$c -replace '(?m)#?one-instance=\S*','one-instance=0'; $c=$c -replace '(?m)#?one-instance-when-started-from-file=\S*','one-instance-when-started-from-file=0'; if($c -notmatch '(?m)^lua-intf='){$c+=[char]10+'lua-intf=unofficial_vlc_intf'}; if($c -notmatch '(?m)^extraintf='){$c+=[char]10+'extraintf=luaintf'}; [IO.File]::WriteAllText($f,$c)" 
+powershell -ExecutionPolicy Bypass -Command "$f='%VLCRC%'; $c=[IO.File]::ReadAllText($f); $c=$c -replace '(?m)#?lua-intf=\S*','lua-intf=unofficial_vlc_intf'; $c=$c -replace '(?m)#?extraintf=\S*','extraintf=luaintf'; $c=$c -replace '(?m)#?http-host=\S*','http-host='; $c=$c -replace '(?m)#?http-port=\S*','http-port='; $c=$c -replace '(?m)#?http-password=\S*','http-password='; $c=$c -replace '(?m)#?qt-system-tray=\S*','qt-system-tray=0'; $c=$c -replace '(?m)#?qt-minimize-systray=\S*','qt-minimize-systray=0'; $c=$c -replace '(?m)#?qt-close-to-systray=\S*','qt-close-to-systray=0'; $c=$c -replace '(?m)#?one-instance=\S*','one-instance=0'; $c=$c -replace '(?m)#?one-instance-when-started-from-file=\S*','one-instance-when-started-from-file=0'; if($c -notmatch '(?m)^lua-intf='){$c+=[char]10+'lua-intf=unofficial_vlc_intf'}; if($c -notmatch '(?m)^extraintf='){$c+=[char]10+'extraintf=luaintf'}; [IO.File]::WriteAllText($f,$c)"
 echo  Configured vlcrc.
+
 echo  Freeing port 8181...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8181 " ^| findstr "LISTENING"') do (
-    echo  Killing PID %%a holding port 8181...
-    taskkill /F /PID %%a >nul 2>&1
-)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8181 " ^| findstr "LISTENING"') do taskkill /F /PID %%a >nul 2>&1
 timeout /t 1 >nul
 
 echo  Starting VLC...
