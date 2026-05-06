@@ -103,13 +103,14 @@ end
 
 local function load_settings()
     local f = io.open(get_settings_path(), "r")
-    if not f then return {auto_pick="off", prefer="", avoid=""} end
+    if not f then return {auto_pick="off", prefer="", avoid="", view_mode="per_addon"} end
     local body = f:read("*a")
     f:close()
     local t = json_decode(body) or {}
-    t.auto_pick = t.auto_pick or "off"
-    t.prefer    = t.prefer    or ""
-    t.avoid     = t.avoid     or ""
+    t.auto_pick  = t.auto_pick  or "off"
+    t.prefer     = t.prefer     or ""
+    t.avoid      = t.avoid      or ""
+    t.view_mode  = t.view_mode  or "per_addon"
     return t
 end
 
@@ -444,6 +445,14 @@ local function handle_ui()
 <div id="as" class="st"></div></section>
 <section><h2>Installed Addons</h2><div id="list"><div class="em">Loading...</div></div></section>
 <section><h2>Stream Settings</h2>
+<div class="row" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+<label style="font-size:13px;color:#aaa;white-space:nowrap">Sidebar view:</label>
+<select id="vm" onchange="saveViewMode()" style="background:#1a1a24;border:1px solid #2a2a38;border-radius:8px;padding:9px 12px;color:#e0e0e0;font-size:14px;outline:none;flex:1">
+<option value="per_addon">Per addon (each addon is its own folder)</option>
+<option value="combined">Combined (Movies / Series / TV grouped across all addons)</option>
+</select>
+<span style="font-size:12px;color:#666">Restart VLC sidebar after changing</span>
+</div>
 <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
 <label style="font-size:13px;color:#aaa;white-space:nowrap">Auto-pick stream:</label>
 <select id="ap" onchange="updateSettingsUI(this.value)" style="background:#1a1a24;border:1px solid #2a2a38;border-radius:8px;padding:9px 12px;color:#e0e0e0;font-size:14px;outline:none;flex:1">
@@ -479,7 +488,12 @@ async function loadSettings(){
   document.getElementById('ap').value=s.auto_pick||'off';
   document.getElementById('pref').value=s.prefer||'';
   document.getElementById('avd').value=s.avoid||'';
+  document.getElementById('vm').value=s.view_mode||'per_addon';
   updateSettingsUI(s.auto_pick||'off');
+}
+async function saveViewMode(){
+  const vm=document.getElementById('vm').value;
+  await fetch('/settings?view_mode='+encodeURIComponent(vm),{method:'POST'});
 }
 function updateSettingsUI(v){
   const pr=document.getElementById('prefer-row');
@@ -506,6 +520,124 @@ end
 -- Request router
 -- ---------------------------------------------------------------------------
 
+
+-- Fetch all enabled addons and their bases
+local function get_enabled_addon_bases()
+    local body = http_get("http://127.0.0.1:" .. PORT .. "/addons")
+    if not body then return {} end
+    local addons = json_decode(body) or {}
+    local bases = {}
+    for _, a in ipairs(addons) do
+        if a.enabled ~= false then
+            local base = (a.url or ""):gsub("/manifest%.json$", ""):gsub("/$", "")
+            if base ~= "" then table.insert(bases, base) end
+        end
+    end
+    return bases
+end
+
+-- Combined catalog: returns one entry per addon catalog of this type.
+-- Each entry points directly to the Stremio catalog URL wrapped via stremio-catalog,
+-- so the PLAYLIST PARSER does the slow fetching (it runs in its own thread).
+-- This keeps the intf fast and non-blocking.
+local function handle_stremio_combined_catalog(query_str)
+    local params = parse_query(query_str)
+    local ctype = params.type or "movie"
+    local bases = get_enabled_addon_bases()
+    local items = {}
+    for _, base in ipairs(bases) do
+        local mf = http_get(base .. "/manifest.json")
+        if mf then
+            local manifest = json_decode(mf)
+            local name = (manifest and manifest.name) or base
+            local catalogs = manifest and manifest.catalogs or {}
+            for _, cat in ipairs(catalogs) do
+                if cat.type == ctype then
+                    local cat_url = base .. "/catalog/" .. ctype .. "/" .. urlencode(cat.id) .. ".json"
+                    local vlc_url = "http://127.0.0.1:" .. PORT .. "/vlc/stremio-catalog?url=" .. urlencode(cat_url) .. "&base=" .. urlencode(base) .. "&type=" .. urlencode(ctype)
+                    table.insert(items, {path=vlc_url, title=(cat.name or cat.id) .. " — " .. name})
+                end
+            end
+        end
+    end
+    return ok_json(json_encode(items))
+end
+
+-- Combined meta: fetch episode list from first addon that has it
+local function handle_stremio_combined_meta(query_str)
+    local params = parse_query(query_str)
+    local mtype = params.type or "series"
+    local mid   = params.id or ""
+    if mid == "" then return ok_json("[]") end
+    local bases = get_enabled_addon_bases()
+    for _, base in ipairs(bases) do
+        local body = http_get(base .. "/meta/" .. mtype .. "/" .. mid .. ".json")
+        if body then
+            local data = json_decode(body)
+            if data and data.meta then
+                -- Reuse existing meta handler logic by forwarding to stremio-meta with this base
+                local qs = "base=" .. urlencode(base) .. "&type=" .. mtype .. "&id=" .. urlencode(mid)
+                return handle_stremio_meta(qs)
+            end
+        end
+    end
+    return ok_json("[]")
+end
+
+-- Combined season: same as above but for a specific season
+local function handle_stremio_combined_season(query_str)
+    local params = parse_query(query_str)
+    local mtype  = params.type or "series"
+    local mid    = params.id or ""
+    local snum   = params.season or "1"
+    if mid == "" then return ok_json("[]") end
+    local bases = get_enabled_addon_bases()
+    for _, base in ipairs(bases) do
+        local body = http_get(base .. "/meta/" .. mtype .. "/" .. mid .. ".json")
+        if body then
+            local data = json_decode(body)
+            if data and data.meta and data.meta.videos and #data.meta.videos > 0 then
+                local qs = "base=" .. urlencode(base) .. "&type=" .. mtype .. "&id=" .. urlencode(mid) .. "&season=" .. snum
+                return handle_stremio_season(qs)
+            end
+        end
+    end
+    return ok_json("[]")
+end
+
+-- Combined stream: query ALL addons and merge streams, then autopick
+local function handle_stremio_combined_stream(query_str)
+    local params = parse_query(query_str)
+    local mtype = params.type or "movie"
+    local mid   = params.id or ""
+    if mid == "" then return ok_json("[]") end
+    local bases = get_enabled_addon_bases()
+    local all_streams = {}
+    for _, base in ipairs(bases) do
+        local body = http_get(base .. "/stream/" .. mtype .. "/" .. mid .. ".json")
+        if body then
+            local data = json_decode(body)
+            local streams = data and data.streams or {}
+            for _, s in ipairs(streams) do
+                if s.url and s.url ~= "" then
+                    table.insert(all_streams, s)
+                end
+            end
+        end
+    end
+    local settings = load_settings()
+    local picked = autopick_stream(all_streams, settings)
+    if picked then
+        return ok_json(json_encode({picked}))
+    end
+    local items = {}
+    for _, s in ipairs(all_streams) do
+        if s.url and s.url ~= "" then
+            table.insert(items, {path=s.url, title=(s.title or s.name or "Stream"):gsub("\n"," · ")})
+        end
+    end
+    return ok_json(json_encode(items))
+end
 
 local function handle_stremio_catalog(query_str)
     local params = parse_query(query_str)
@@ -699,6 +831,7 @@ local function route(method, path, query_str, body)
             s.auto_pick = params.auto_pick or s.auto_pick
             s.prefer    = params.prefer    ~= nil and params.prefer    or s.prefer
             s.avoid     = params.avoid     ~= nil and params.avoid     or s.avoid
+            s.view_mode = params.view_mode or s.view_mode
             save_settings(s)
             return ok_json('{"ok":true}')
         else
@@ -712,6 +845,14 @@ local function route(method, path, query_str, body)
         return handle_stremio_stream(query_str)
     elseif path == "/vlc/stremio-season" then
         return handle_stremio_season(query_str)
+    elseif path == "/vlc/stremio-combined-catalog" then
+        return handle_stremio_combined_catalog(query_str)
+    elseif path == "/vlc/stremio-combined-meta" then
+        return handle_stremio_combined_meta(query_str)
+    elseif path == "/vlc/stremio-combined-season" then
+        return handle_stremio_combined_season(query_str)
+    elseif path == "/vlc/stremio-combined-stream" then
+        return handle_stremio_combined_stream(query_str)
     elseif path:match("^/vlc/catalog/") then
         return handle_catalog(path, query_str)
     elseif path:match("^/vlc/meta/") then
